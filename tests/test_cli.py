@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 # Import internal fsdelta objects
 from fsdelta.cli import app
-from fsdelta.db import connect, diff_entries, resolve_scan
+from fsdelta.db import connect, diff_entries, list_diffs, list_scans, resolve_scan
 
 # runner: shared typer test runner
 runner = CliRunner()
@@ -62,5 +62,31 @@ def test_diff_command_renders(tmp_path: Path) -> None:
 def test_diff_unknown_scan(tmp_path: Path) -> None:
     db = _seed(tmp_path)
     result = _invoke(db, 'diff', 'pre', 'nope')
+    assert result.exit_code == 1
+    assert 'unknown scan' in result.output
+
+# test_ls_and_show: listing names scans and diffs, show renders a saved diff
+def test_ls_and_show(tmp_path: Path) -> None:
+    db = _seed(tmp_path)
+    listing = _invoke(db, 'ls')
+    assert listing.exit_code == 0, listing.output
+    assert 'change' in listing.output
+    shown = _invoke(db, 'show', 'change')
+    assert shown.exit_code == 0, shown.output
+    assert 'new.txt' in shown.output
+
+# test_rm: deleting a scan keeps the saved diff, deleting the diff clears it
+def test_rm(tmp_path: Path) -> None:
+    db = _seed(tmp_path)
+    assert _invoke(db, 'rm', 'pre').exit_code == 0
+    assert [s.name for s in list_scans(connect(db))] == ['post']
+    assert _invoke(db, 'show', 'change').exit_code == 0
+    assert _invoke(db, 'rm', 'change', '--diff').exit_code == 0
+    assert list_diffs(connect(db)) == []
+
+# test_rm_unknown: an unknown selector is a clean error
+def test_rm_unknown(tmp_path: Path) -> None:
+    db = _seed(tmp_path)
+    result = _invoke(db, 'rm', 'nope')
     assert result.exit_code == 1
     assert 'unknown scan' in result.output

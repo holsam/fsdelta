@@ -11,9 +11,22 @@ from rich.console import Console
 from typing import Annotated
 
 # Import internal fsdelta objects
-from fsdelta.db import add_scan, check_name, connect, default_db_path, resolve_scan, save_diff
+from fsdelta.db import (
+    add_scan,
+    check_name,
+    connect,
+    default_db_path,
+    delete_diff,
+    delete_scan,
+    diff_entries,
+    list_diffs,
+    list_scans,
+    resolve_diff,
+    resolve_scan,
+    save_diff,
+)
 from fsdelta.diff import compute_diff
-from fsdelta.render import render_diff
+from fsdelta.render import render_diff, render_listing
 from fsdelta.scan import scan_tree
 from fsdelta.schema import Entry
 
@@ -63,6 +76,39 @@ def diff(
             save_diff(conn, save, scan_a.name, scan_b.name, entries)
             _err.print(f'saved diff {save!r}', markup=False)
     render_diff(entries, title=f'{scan_a.name} to {scan_b.name}')
+
+# ls: list stored scans and saved diffs
+@app.command()
+def ls(ctx: typer.Context) -> None:
+    conn = connect(ctx.obj)
+    render_listing(list_scans(conn), list_diffs(conn))
+
+# show: render a saved diff
+@app.command()
+def show(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help='Saved diff id or name.')],
+) -> None:
+    with _errors():
+        conn = connect(ctx.obj)
+        info = resolve_diff(conn, name)
+        render_diff(diff_entries(conn, info.id), title=f'{info.name}: {info.scan_a} to {info.scan_b}')
+
+# rm: delete a scan, or a saved diff with --diff
+@app.command()
+def rm(
+    ctx: typer.Context,
+    selector: Annotated[str, typer.Argument(help='Scan id or name, or saved diff id or name with --diff.')],
+    *,
+    as_diff: Annotated[bool, typer.Option('--diff', help='Delete a saved diff instead of a scan.')] = False,
+) -> None:
+    with _errors():
+        conn = connect(ctx.obj)
+        if as_diff:
+            typer.echo(f'deleted diff {delete_diff(conn, selector).name!r}')
+        else:
+            info = delete_scan(conn, selector)
+            typer.echo(f'deleted scan {info.name!r} ({info.entry_count} entries)')
 
 # _main: store the database path for subcommands
 @app.callback()

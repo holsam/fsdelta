@@ -9,7 +9,7 @@ from rich.table import Table
 from rich.text import Text
 
 # Import internal fsdelta objects
-from fsdelta.schema import DiffEntry
+from fsdelta.schema import DiffEntry, DiffInfo, ScanInfo
 
 # _ORDER: display order of change types
 _ORDER = ('added', 'modified', 'renamed', 'deleted')
@@ -34,3 +34,18 @@ def render_diff(entries: list[DiffEntry], *, title: str, console: Console | None
             console.print(table)
     else:
         console.print(table)
+
+# render_listing: print stored scans and saved diffs as two tables
+def render_listing(scans: list[ScanInfo], diffs: list[DiffInfo], *, console: Console | None = None) -> None:
+    console = console or Console()
+    console.print(_table('scans', ('id', 'name', 'root', 'created', 'entries'), [(str(s.id), s.name, s.root, s.created_at, str(s.entry_count)) for s in scans]))
+    console.print(_table('diffs', ('id', 'name', 'from', 'to', 'created', 'changes'), [(str(d.id), d.name, d.scan_a, d.scan_b, d.created_at, str(d.entry_count)) for d in diffs]))
+
+# _table: plain text table, cells wrapped in Text so brackets are not read as markup
+def _table(title: str, columns: tuple[str, ...], rows: list[tuple[str, ...]]) -> Table:
+    table = Table(title=title)
+    for column in columns:
+        table.add_column(column, overflow='fold')
+    for row in rows:
+        table.add_row(*(Text(cell) for cell in row))
+    return table
