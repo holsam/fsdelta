@@ -121,6 +121,28 @@ def diff_entries(conn: sqlite3.Connection, diff_id: int) -> list[DiffEntry]:
     )
     return [DiffEntry.model_validate(dict(row)) for row in rows]
 
+# list_scans: all stored scans, oldest first
+def list_scans(conn: sqlite3.Connection) -> list[ScanInfo]:
+    return [ScanInfo.model_validate(dict(row)) for row in conn.execute('SELECT * FROM scan ORDER BY id')]
+
+# list_diffs: all saved diffs, oldest first
+def list_diffs(conn: sqlite3.Connection) -> list[DiffInfo]:
+    return [DiffInfo.model_validate(dict(row)) for row in conn.execute('SELECT * FROM diff ORDER BY id')]
+
+# delete_scan: remove a scan and its entries, saved diffs are kept
+def delete_scan(conn: sqlite3.Connection, selector: str) -> ScanInfo:
+    info = resolve_scan(conn, selector)
+    with conn:
+        conn.execute('DELETE FROM scan WHERE id = ?', (info.id,))
+    return info
+
+# delete_diff: remove a saved diff and its changes
+def delete_diff(conn: sqlite3.Connection, selector: str) -> DiffInfo:
+    info = resolve_diff(conn, selector)
+    with conn:
+        conn.execute('DELETE FROM diff WHERE id = ?', (info.id,))
+    return info
+
 # _resolve: fetch one row of a named table by id or name
 def _resolve(conn: sqlite3.Connection, table: _Table, selector: str) -> sqlite3.Row:
     by_id = selector.isdigit()  # safe because check_name rejects all-digit names
