@@ -1,6 +1,6 @@
 [project]
 name = "fsdelta"
-version = "0.0.0"
+version = "0.1.0"
 description = "Identify changes to file systems."
 readme = "README.md"
 authors = [
