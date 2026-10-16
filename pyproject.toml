@@ -1,0 +1,17 @@
+[project]
+name = "fsdelta"
+version = "0.0.0"
+description = "Identify changes to file systems."
+readme = "README.md"
+authors = [
+    { name = "Sam Holland", email = "hol_sam@icloud.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+fsdelta = "fsdelta:main"
+
+[build-system]
+requires = ["uv_build>=0.11.26,<0.12.0"]
+build-backend = "uv_build"
