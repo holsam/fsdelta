@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 # Import internal fsdelta objects
-from fsdelta.schema import Entry, ScanInfo
+from fsdelta.schema import DiffEntry, DiffInfo, Entry, ScanInfo
 
 # _Table: tables with unique names
 _Table = Literal['scan', 'diff']
@@ -93,6 +93,33 @@ def add_scan(conn: sqlite3.Connection, name: str, root: str, entries: Iterable[E
 # resolve_scan: look up a scan by id or name
 def resolve_scan(conn: sqlite3.Connection, selector: str) -> ScanInfo:
     return ScanInfo.model_validate(dict(_resolve(conn, 'scan', selector)))
+
+# save_diff: store a named diff so it outlives the scans it came from
+def save_diff(
+    conn: sqlite3.Connection, name: str, scan_a: str, scan_b: str, entries: list[DiffEntry]
+) -> DiffInfo:
+    check_name(conn, 'diff', name)
+    with conn:
+        diff_id = conn.execute(
+            'INSERT INTO diff (name, scan_a, scan_b, created_at, entry_count) VALUES (?, ?, ?, ?, ?)',
+            (name, scan_a, scan_b, _now(), len(entries)),
+        ).lastrowid
+        conn.executemany(
+            'INSERT INTO diff_entry VALUES (?, ?, ?, ?)',
+            ((diff_id, e.path, e.change, e.old_path) for e in entries),
+        )
+    return resolve_diff(conn, name)
+
+# resolve_diff: look up a saved diff by id or name
+def resolve_diff(conn: sqlite3.Connection, selector: str) -> DiffInfo:
+    return DiffInfo.model_validate(dict(_resolve(conn, 'diff', selector)))
+
+# diff_entries: the changes of a saved diff, ordered by path
+def diff_entries(conn: sqlite3.Connection, diff_id: int) -> list[DiffEntry]:
+    rows = conn.execute(
+        'SELECT path, change, old_path FROM diff_entry WHERE diff_id = ? ORDER BY path', (diff_id,)
+    )
+    return [DiffEntry.model_validate(dict(row)) for row in rows]
 
 # _resolve: fetch one row of a named table by id or name
 def _resolve(conn: sqlite3.Connection, table: _Table, selector: str) -> sqlite3.Row:

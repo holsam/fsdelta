@@ -3,13 +3,14 @@ fsdelta: tests for diff command
 '''
 
 # Import external dependencies
-import sqlite3
+import pytest, sqlite3
 from pathlib import Path
 
 # Import internal fsdelta objects
-from fsdelta.db import add_scan
+from fsdelta.db import add_scan, diff_entries, save_diff
 from fsdelta.diff import compute_diff
 from fsdelta.scan import scan_tree
+from fsdelta.schema import DiffEntry
 
 # _snap: scan a root into the database and return the scan id
 def _snap(conn: sqlite3.Connection, root: Path, name: str) -> int:
@@ -58,3 +59,10 @@ def test_identical_scans_have_no_changes(conn: sqlite3.Connection, tmp_path: Pat
     (root / 'a').write_text('a')
     scan_id = _snap(conn, root, 'only')
     assert compute_diff(conn, scan_id, scan_id) == []
+
+# test_save_diff_roundtrip: a saved diff reads back unchanged
+def test_save_diff_roundtrip(conn: sqlite3.Connection) -> None:
+    entries = [DiffEntry(path='a', change='added'), DiffEntry(path='b', change='renamed', old_path='c')]
+    info = save_diff(conn, 'install', 'pre', 'post', entries)
+    assert info.entry_count == 2
+    assert diff_entries(conn, info.id) == entries
