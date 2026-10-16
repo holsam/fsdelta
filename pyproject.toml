@@ -7,7 +7,11 @@ authors = [
     { name = "Sam Holland", email = "hol_sam@icloud.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "pydantic>=2.14.1",
+    "rich>=15.0.0",
+    "typer>=0.27.3",
+]
 
 [project.scripts]
 fsdelta = "fsdelta:main"
@@ -15,3 +19,8 @@ fsdelta = "fsdelta:main"
 [build-system]
 requires = ["uv_build>=0.11.26,<0.12.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
