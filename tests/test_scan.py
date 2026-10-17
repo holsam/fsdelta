@@ -62,3 +62,10 @@ def test_sparse_file_not_hashed(tmp_path: Path) -> None:
     assert entries['ok'].hash is not None
     assert len(warnings) == 1
     assert 'sparse' in warnings[0]
+
+# test_parallel_matches_serial: thread count never changes the result
+def test_parallel_matches_serial(tmp_path: Path) -> None:
+    root = _tree(tmp_path)
+    for i in range(20):
+        (root / f'f{i}').write_text(str(i))
+    assert list(scan_tree(root, threads=1)) == list(scan_tree(root, threads=4))

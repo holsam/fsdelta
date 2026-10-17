@@ -5,6 +5,7 @@ fsdelta: walk a directory tree and hash contents
 # Import external dependencies
 import hashlib, os, stat
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # Import internal fsdelta objects
@@ -13,18 +14,25 @@ from fsdelta.schema import Entry, Kind
 # _CHUNK: read size when hashing, 1 MiB
 _CHUNK = 1024 * 1024
 
-# scan_tree: yield an entry per object under root, never following symlinks
-def scan_tree(root: Path, *, on_warning: Callable[[str], None] | None = None) -> Iterator[Entry]:
+# scan_tree: yield an entry per object under root, never following symlinks, hashing across threads
+def scan_tree(root: Path, *, threads: int = 1, on_warning: Callable[[str], None] | None = None) -> Iterator[Entry]:
     warn = on_warning or (lambda message: None)
+    entries = list(_walk(root, warn))
+    # hashlib releases the GIL on large buffers, so threads scale for big files
+    with ThreadPoolExecutor(max_workers=threads) as pool:
+        digests = pool.map(lambda item: _hash(root / item[0].path, item[0].kind, item[1], warn), entries)
+        for (entry, _), digest in zip(entries, digests):
+            yield entry.model_copy(update={'hash': digest})
+
+# _walk: stat every object under root in a deterministic order, hashes still unset
+def _walk(root: Path, warn: Callable[[str], None]) -> Iterator[tuple[Entry, os.stat_result]]:
     walker = os.walk(root, onerror=lambda exc: warn(f'cannot read {exc.filename!r}: {exc.strerror}'))
     for dirpath, dirnames, filenames in walker:
         dirnames.sort()  # deterministic traversal order
         for name in sorted(dirnames + filenames):
-            full = Path(dirpath) / name
-            statted = _stat_entry(root, full, warn)
+            statted = _stat_entry(root, Path(dirpath) / name, warn)
             if statted is not None:
-                entry, st = statted
-                yield entry.model_copy(update={'hash': _hash(full, entry.kind, st, warn)})
+                yield statted
 
 # _stat_entry: build an entry without its hash, plus its lstat, or None when it cannot be recorded
 def _stat_entry(root: Path, full: Path, warn: Callable[[str], None]) -> tuple[Entry, os.stat_result] | None:
