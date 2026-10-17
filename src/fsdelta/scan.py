@@ -21,12 +21,13 @@ def scan_tree(root: Path, *, on_warning: Callable[[str], None] | None = None) ->
         dirnames.sort()  # deterministic traversal order
         for name in sorted(dirnames + filenames):
             full = Path(dirpath) / name
-            entry = _stat_entry(root, full, warn)
-            if entry is not None:
-                yield entry.model_copy(update={'hash': _hash(full, entry.kind, warn)})
+            statted = _stat_entry(root, full, warn)
+            if statted is not None:
+                entry, st = statted
+                yield entry.model_copy(update={'hash': _hash(full, entry.kind, st, warn)})
 
-# _stat_entry: build an entry without its hash, or None when it cannot be recorded
-def _stat_entry(root: Path, full: Path, warn: Callable[[str], None]) -> Entry | None:
+# _stat_entry: build an entry without its hash, plus its lstat, or None when it cannot be recorded
+def _stat_entry(root: Path, full: Path, warn: Callable[[str], None]) -> tuple[Entry, os.stat_result] | None:
     try:
         st = full.lstat()
     except OSError as exc:
@@ -39,7 +40,7 @@ def _stat_entry(root: Path, full: Path, warn: Callable[[str], None]) -> Entry | 
         # sqlite text column cannot hold it
         warn(f'skipping non-utf8 name {rel!r}')
         return None
-    return Entry(
+    entry = Entry(
         path=rel,
         kind=_kind(st.st_mode),
         size=st.st_size,
@@ -47,6 +48,7 @@ def _stat_entry(root: Path, full: Path, warn: Callable[[str], None]) -> Entry | 
         mtime_ns=st.st_mtime_ns,
         hash=None,
     )
+    return entry, st
 
 # _kind: classify an lstat mode
 def _kind(mode: int) -> Kind:
@@ -58,8 +60,12 @@ def _kind(mode: int) -> Kind:
         return 'file'
     return 'other'
 
-# _hash: blake2b of file content or link target, None for dirs, other kinds and unreadable files
-def _hash(path: Path, kind: Kind, warn: Callable[[str], None]) -> str | None:
+# _hash: blake2b of file content or link target, None for dirs, other kinds, sparse and unreadable files
+def _hash(path: Path, kind: Kind, st: os.stat_result, warn: Callable[[str], None]) -> str | None:
+    if kind == 'file' and _is_sparse(st):
+        # reading holes costs apparent size, diff falls back to size and mtime
+        warn(f'skipping sparse file {str(path)!r}')
+        return None
     digest = hashlib.blake2b()
     try:
         if kind == 'symlink':
@@ -75,3 +81,7 @@ def _hash(path: Path, kind: Kind, warn: Callable[[str], None]) -> str | None:
         warn(f'cannot hash {str(path)!r}: {exc.strerror}')
         return None
     return digest.hexdigest()
+
+# _is_sparse: lstat shows far fewer allocated bytes than apparent size, floor avoids small-file false positives
+def _is_sparse(st: os.stat_result) -> bool:
+    return st.st_size > _CHUNK and st.st_blocks * 512 < st.st_size

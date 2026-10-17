@@ -47,3 +47,18 @@ def test_unreadable_file_has_null_hash(tmp_path: Path) -> None:
     assert entries['secret'].hash is None
     assert entries['ok'].hash is not None
     assert len(warnings) == 1
+
+# test_sparse_file_not_hashed: a large sparse file gets a null hash and one warning, neighbours still hash
+def test_sparse_file_not_hashed(tmp_path: Path) -> None:
+    root = tmp_path / 'root'
+    root.mkdir()
+    with (root / 'big').open('wb') as handle:
+        handle.truncate(64 * 1024 * 1024)
+    (root / 'ok').write_text('y')
+    warnings: list[str] = []
+    entries = {e.path: e for e in scan_tree(root, on_warning=warnings.append)}
+    assert entries['big'].hash is None
+    assert entries['big'].size == 64 * 1024 * 1024
+    assert entries['ok'].hash is not None
+    assert len(warnings) == 1
+    assert 'sparse' in warnings[0]
