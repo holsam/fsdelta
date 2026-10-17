@@ -25,7 +25,10 @@ SELECT b.path, 'modified', b.hash
 FROM entry a
 JOIN entry b ON b.path = a.path
 WHERE a.scan_id = :a AND b.scan_id = :b
-  AND (a.hash IS NOT b.hash OR a.mode != b.mode OR a.kind != b.kind)
+  AND (a.hash IS NOT b.hash OR a.mode != b.mode OR a.kind != b.kind
+       -- no hash on either side (sparse or unreadable), compare metadata instead
+       OR (a.kind = 'file' AND a.hash IS NULL AND b.hash IS NULL
+           AND (a.size != b.size OR a.mtime_ns != b.mtime_ns)))
 ORDER BY path
 '''
 

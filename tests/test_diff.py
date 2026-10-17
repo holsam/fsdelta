@@ -3,7 +3,7 @@ fsdelta: tests for diff command
 '''
 
 # Import external dependencies
-import pytest, sqlite3
+import os, pytest, sqlite3
 from pathlib import Path
 
 # Import internal fsdelta objects
@@ -11,6 +11,9 @@ from fsdelta.db import add_scan, diff_entries, save_diff
 from fsdelta.diff import compute_diff
 from fsdelta.scan import scan_tree
 from fsdelta.schema import DiffEntry
+
+# _SPARSE: size above the scan hashing chunk so a truncated file counts as sparse
+_SPARSE = 2 * 1024 * 1024
 
 # _snap: scan a root into the database and return the scan id
 def _snap(conn: sqlite3.Connection, root: Path, name: str) -> int:
@@ -66,3 +69,19 @@ def test_save_diff_roundtrip(conn: sqlite3.Connection) -> None:
     info = save_diff(conn, 'install', 'pre', 'post', entries)
     assert info.entry_count == 2
     assert diff_entries(conn, info.id) == entries
+
+# test_hashless_file_change_detected: size or mtime change on a null-hash file is modified, untouched is not
+def test_hashless_file_change_detected(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    root = tmp_path / 'r'
+    root.mkdir()
+    for name in ('still', 'grown', 'touched'):
+        with (root / name).open('wb') as handle:
+            handle.truncate(_SPARSE)
+    before = _snap(conn, root, 'before')
+    with (root / 'grown').open('r+b') as handle:
+        handle.truncate(_SPARSE * 2)
+    st = (root / 'touched').stat()
+    os.utime(root / 'touched', ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+    after = _snap(conn, root, 'after')
+    got = {(e.change, e.path) for e in compute_diff(conn, before, after)}
+    assert got == {('modified', 'grown'), ('modified', 'touched')}
