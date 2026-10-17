@@ -3,7 +3,7 @@ fsdelta: typer command line interface
 '''
 
 # Import external dependencies
-import typer
+import os, typer
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -44,13 +44,14 @@ def scan(
     root: Annotated[Path, typer.Argument(exists=True, file_okay=False, resolve_path=True, help='Directory to scan.')],
     *,
     name: Annotated[str, typer.Option('--name', '-n', help='Unique name for this scan.')],
+    threads: Annotated[int, typer.Option('--threads', '-t', help='Number of threads to use during scanning.', min=1, max=os.cpu_count())] = 1,
 ) -> None:
     with _errors():
         conn = connect(ctx.obj)
         check_name(conn, 'scan', name)  # fail before the slow part
         entries: list[Entry] = []
         with _err.status('scanning') as status:
-            for entry in scan_tree(root, on_warning=lambda message: _err.print(f'warning: {message}', markup=False)):
+            for entry in scan_tree(root, threads=threads, on_warning=lambda message: _err.print(f'warning: {message}', markup=False)):
                 entries.append(entry)
                 if len(entries) % 1000 == 0:
                     status.update(f'scanning ({len(entries)} entries)')

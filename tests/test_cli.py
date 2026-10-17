@@ -90,3 +90,12 @@ def test_rm_unknown(tmp_path: Path) -> None:
     result = _invoke(db, 'rm', 'nope')
     assert result.exit_code == 1
     assert 'unknown scan' in result.output
+
+# test_scan_jobs: --jobs is accepted and a non-positive value is rejected
+def test_scan_jobs(tmp_path: Path) -> None:
+    root = tmp_path / 'root'
+    root.mkdir()
+    (root / 'a').write_text('a')
+    db = tmp_path / 'fsdelta.db'
+    assert _invoke(db, 'scan', str(root), '--name', 'one', '-t', '2').exit_code == 0
+    assert _invoke(db, 'scan', str(root), '--name', 'two', '-t', '0').exit_code != 0
